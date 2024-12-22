@@ -1,5 +1,5 @@
 class MangaItem {
-  final int id;
+  final String documentId; // Идентификатор документа в Firestore
   final String imagePath;
   final String title;
   final String description;
@@ -8,9 +8,10 @@ class MangaItem {
   final String format;
   final String publisher;
   final String chapters;
+  final int quantity; // Количество товара в корзине
 
   MangaItem({
-    required this.id,
+    required this.documentId,
     required this.imagePath,
     required this.title,
     required this.description,
@@ -19,35 +20,64 @@ class MangaItem {
     required this.format,
     required this.publisher,
     required this.chapters,
+    this.quantity = 1, // По умолчанию количество 1
   });
 
-  factory MangaItem.fromJson(Map<String, dynamic> json) {
-    return MangaItem(
-      id: json['id'] is int ? json['id'] : 0,
-      imagePath: json['image_path'] ?? '',
-      title: json['title'] ?? '',
-      description: json['description'] ?? '',
-      price: json['price']?.toString() ?? '',
-      additionalImages: json['additional_images'] != null 
-          ? List<String>.from(json['additional_images'])
-          : [],
-      format: json['format'] ?? 'Не указан',
-      publisher: json['publisher'] ?? 'Не указан',
-      chapters: json['chapters']?.toString() ?? '',
-    );
-  }
-
-  Map<String, dynamic> toJson() {
+  // Конвертация в Map для Firestore
+  Map<String, dynamic> toFirestore() {
     return {
-      'id': id,
-      'image_path': imagePath,
+      'imagePath': imagePath,
       'title': title,
       'description': description,
       'price': price,
-      'additional_images': additionalImages,
-      'format': format.isNotEmpty ? format : 'Не указан',
-      'publisher': publisher.isNotEmpty ? publisher : 'Не указан',
+      'additionalImages': additionalImages,
+      'format': format,
+      'publisher': publisher,
       'chapters': chapters,
+      'quantity': quantity,
     };
   }
+
+  // Конвертация из Firestore документа
+factory MangaItem.fromFirestore(Map<String, dynamic> data, String documentId) {
+  return MangaItem(
+    documentId: documentId,
+    imagePath: data['imagePath'] ?? '',
+    title: data['title'] ?? '',
+    description: data['description'] ?? '',
+    price: data['price'] ?? '',
+    additionalImages: List<String>.from(data['additionalImages'] ?? []),
+    format: data['format'] ?? '',
+    publisher: data['publisher'] ?? '',
+    chapters: data['chapters'] ?? '',
+    quantity: data['quantity'] ?? 1,
+  );
+}
+
+  // Создание копии объекта с измененным количеством
+  MangaItem copyWith({int? quantity}) {
+    return MangaItem(
+      documentId: documentId,
+      imagePath: imagePath,
+      title: title,
+      description: description,
+      price: price,
+      additionalImages: additionalImages,
+      format: format,
+      publisher: publisher,
+      chapters: chapters,
+      quantity: quantity ?? this.quantity,
+    );
+  }
+
+  // Переопределение методов для сравнения объектов
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is MangaItem &&
+          runtimeType == other.runtimeType &&
+          documentId == other.documentId;
+
+  @override
+  int get hashCode => documentId.hashCode;
 }

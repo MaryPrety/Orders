@@ -30,7 +30,7 @@ class _LoginPage2State extends State<LoginPage2> with SingleTickerProviderStateM
     final authService = Provider.of<AuthService>(context, listen: false);
 
     try {
-      await authService.signInWithEmailandPassword(
+      await authService.signInWithEmailAndPassword(
         emailController.text,
         passwordController.text,
       );
@@ -64,7 +64,8 @@ class _LoginPage2State extends State<LoginPage2> with SingleTickerProviderStateM
   @override
   Widget build(BuildContext context) {
     final screenWidth = MediaQuery.of(context).size.width;
-    final cardWidth = screenWidth * 0.45; // 45% от ширины экрана
+    final isMobile = screenWidth < 600;
+    final cardWidth = isMobile ? screenWidth * 0.9 : screenWidth * 0.45; // Увеличиваем ширину карточки на мобильных устройствах
 
     return Scaffold(
       body: MouseRegion(
@@ -141,25 +142,34 @@ class _LoginPage2State extends State<LoginPage2> with SingleTickerProviderStateM
                           const SizedBox(height: 25),
 
                           // Email
-                          MyTextField(
-                            controller: emailController,
-                            hintText: 'Email',
-                            obscureText: false,
+                          SizedBox(
+                            width: isMobile ? cardWidth * 0.9 : null,
+                            child: MyTextField(
+                              controller: emailController,
+                              hintText: 'Email',
+                              obscureText: false,
+                            ),
                           ),
 
                           const SizedBox(height: 10),
 
                           // Password
-                          MyTextField(
-                            controller: passwordController,
-                            hintText: 'Password',
-                            obscureText: true,
+                          SizedBox(
+                            width: isMobile ? cardWidth * 0.9 : null,
+                            child: MyTextField(
+                              controller: passwordController,
+                              hintText: 'Password',
+                              obscureText: true,
+                            ),
                           ),
 
                           const SizedBox(height: 25),
 
                           // Button
-                          MyButton(onTap: signIn, text: 'Sign In'),
+                          SizedBox(
+                            width: isMobile ? cardWidth * 0.9 : null,
+                            child: MyButton(onTap: signIn, text: 'Sign In'),
+                          ),
 
                           const SizedBox(height: 20),
 

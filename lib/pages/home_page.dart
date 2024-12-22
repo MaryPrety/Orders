@@ -5,7 +5,7 @@ import 'manga_details_screen.dart';
 import 'upload_new_volume_page.dart';
 import '../providers/favorite_provider.dart';
 import '../providers/cart_provider.dart'; // Импортируем CartProvider
-import '../services/api_service.dart'; // Импортируем ApiService
+import '../services/manga_service.dart'; // Импортируем MangaService
 
 class HomePage extends StatefulWidget {
   @override
@@ -13,9 +13,7 @@ class HomePage extends StatefulWidget {
 }
 
 class _HomePageState extends State<HomePage> {
-  List<MangaItem> productItems = [];
-  List<MangaItem> filteredItems = [];
-  bool isLoading = true;
+  final MangaService _mangaService = MangaService();
   String searchQuery = '';
   String sortBy = 'title';
   String sortOrder = 'asc';
@@ -23,51 +21,36 @@ class _HomePageState extends State<HomePage> {
   double minPrice = 0;
   double maxPrice = 1000;
 
-  @override
-  void initState() {
-    super.initState();
-    _fetchProducts();
-  }
-
-  Future<void> _fetchProducts() async {
-    try {
-      final products = await ApiService().fetchProducts();
-      setState(() {
-        productItems = products;
-        filteredItems = products;
-        isLoading = false;
-      });
-    } catch (e) {
-      setState(() {
-        isLoading = false;
-      });
-      print('Error fetching products: $e');
-    }
+  // Безопасное преобразование строки в число
+  double? _parsePrice(String price) {
+    return double.tryParse(price.replaceAll(RegExp(r'[^0-9.]'), ''));
   }
 
   // Обновление списка товаров на основе поискового запроса, сортировки и фильтров
-  void _updateFilteredItems() {
-    setState(() {
-      filteredItems = productItems.where((item) {
-        final titleMatch = item.title.toLowerCase().contains(searchQuery.toLowerCase());
-        final descriptionMatch = item.description.toLowerCase().contains(searchQuery.toLowerCase());
-        final priceMatch = double.parse(item.price.replaceAll(' рублей', '')) >= minPrice && double.parse(item.price.replaceAll(' рублей', '')) <= maxPrice;
-        final publisherMatch = selectedPublisher == null || item.publisher == selectedPublisher;
-        return (titleMatch || descriptionMatch) && priceMatch && publisherMatch;
-      }).toList();
+  List<MangaItem> _filterMangaItems(List<MangaItem> items) {
+    return items.where((item) {
+      final titleMatch = item.title.toLowerCase().contains(searchQuery.toLowerCase());
+      final descriptionMatch = item.description.toLowerCase().contains(searchQuery.toLowerCase());
+      final price = _parsePrice(item.price);
+      final priceMatch = price != null && price >= minPrice && price <= maxPrice;
+      final publisherMatch = selectedPublisher == null || item.publisher == selectedPublisher;
+      return (titleMatch || descriptionMatch) && priceMatch && publisherMatch;
+    }).toList();
+  }
 
-      // Сортировка
-      filteredItems.sort((a, b) {
-        if (sortBy == 'title') {
-          return sortOrder == 'asc' ? a.title.compareTo(b.title) : b.title.compareTo(a.title);
-        } else if (sortBy == 'price') {
-          final priceA = double.parse(a.price.replaceAll(' рублей', ''));
-          final priceB = double.parse(b.price.replaceAll(' рублей', ''));
-          return sortOrder == 'asc' ? priceA.compareTo(priceB) : priceB.compareTo(priceA);
-        }
-        return 0;
-      });
+  // Сортировка
+  List<MangaItem> _sortMangaItems(List<MangaItem> items) {
+    items.sort((a, b) {
+      if (sortBy == 'title') {
+        return sortOrder == 'asc' ? a.title.compareTo(b.title) : b.title.compareTo(a.title);
+      } else if (sortBy == 'price') {
+        final priceA = _parsePrice(a.price) ?? 0;
+        final priceB = _parsePrice(b.price) ?? 0;
+        return sortOrder == 'asc' ? priceA.compareTo(priceB) : priceB.compareTo(priceA);
+      }
+      return 0;
     });
+    return items;
   }
 
   // Обновление поискового запроса
@@ -75,7 +58,6 @@ class _HomePageState extends State<HomePage> {
     setState(() {
       searchQuery = query;
     });
-    _updateFilteredItems();
   }
 
   // Обновление сортировки
@@ -84,7 +66,6 @@ class _HomePageState extends State<HomePage> {
       this.sortBy = sortBy;
       this.sortOrder = sortOrder;
     });
-    _updateFilteredItems();
   }
 
   // Обновление фильтров
@@ -94,68 +75,52 @@ class _HomePageState extends State<HomePage> {
       this.minPrice = minPrice;
       this.maxPrice = maxPrice;
     });
-    _updateFilteredItems();
   }
 
-  // Переход на экран добавления нового тома манги
-  void _navigateToAddProductScreen(BuildContext context) async {
-    final result = await Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) => UploadNewVolumePage(
-          onItemCreated: (MangaItem? item) {
-            if (item != null) {
-              setState(() {
-                productItems.add(item);
-                _updateFilteredItems();
-              });
-            }
-          },
-        ),
+  // Сброс фильтров
+  void _resetFilters() {
+    setState(() {
+      sortBy = 'title';
+      sortOrder = 'asc';
+      selectedPublisher = null;
+      minPrice = 0;
+      maxPrice = 1000;
+    });
+  }
+
+void _navigateToAddProductScreen(BuildContext context) async {
+  final result = await Navigator.push(
+    context,
+    MaterialPageRoute(
+      builder: (context) => UploadNewVolumePage(
+        onItemCreated: (MangaItem? item) {
+          if (item != null) {
+            // Убираем эту строку, так как добавление уже выполняется в UploadNewVolumePage
+            // _mangaService.addMangaItem(item);
+          }
+        },
       ),
-    );
-
-    if (result != null) {
-      setState(() {
-        productItems.add(result);
-        _updateFilteredItems();
-      });
-    }
-  }
+    ),
+  );
+}
 
   // Управление избранными элементами
-  void _toggleFavorite(BuildContext context, int index) {
+  void _toggleFavorite(BuildContext context, MangaItem item) {
     final provider = Provider.of<FavoriteProvider>(context, listen: false);
-    final product = filteredItems[index];
-    if (provider.favoriteItems.contains(product)) {
-      provider.removeFromFavorites(product);
+    if (provider.favoriteItems.contains(item)) {
+      provider.removeFromFavorites(item);
     } else {
-      provider.addToFavorites(product);
+      provider.addToFavorites(item);
     }
   }
 
   // Управление корзиной
-  void _toggleCart(BuildContext context, int index) {
+  void _toggleCart(BuildContext context, MangaItem item) {
     final provider = Provider.of<CartProvider>(context, listen: false);
-    final product = filteredItems[index];
-    if (provider.cartItems.contains(product)) {
-      provider.removeFromCart(product);
+    if (provider.cartItems.contains(item)) {
+      provider.removeFromCart(item);
     } else {
-      provider.addToCart(product);
-    }
-  }
-
-  // Удаление элемента манги
-  void _deleteMangaItem(int index) async {
-    final product = filteredItems[index];
-    try {
-      await ApiService().deleteProduct(product.id);
-      setState(() {
-        productItems.removeWhere((item) => item.id == product.id);
-        _updateFilteredItems();
-      });
-    } catch (e) {
-      print('Error deleting product: $e');
+      provider.addToCart(item);
     }
   }
 
@@ -168,36 +133,53 @@ class _HomePageState extends State<HomePage> {
 
     return Scaffold(
       backgroundColor: const Color(0xFF191919),
-      body: isLoading
-          ? Center(child: CircularProgressIndicator())
-          : Padding(
-              padding: const EdgeInsets.all(20.0),
-              child: Column(
-                children: [
-                  _buildHeader(context, isMobile),
-                  const SizedBox(height: 20),
-                  _buildSearchBar(),
-                  const SizedBox(height: 10),
-                  _buildSortAndFilterBar(),
-                  const SizedBox(height: 20),
-                  Expanded(
-                    child: GridView.builder(
-                      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                        crossAxisCount: isMobile ? 1 : 2, // Один столбец на мобильных устройствах, два на десктопах
-                        childAspectRatio: isMobile ? 1.6 : 2.3, // Соотношение ширины и высоты
-                        crossAxisSpacing: 20, // Расстояние между столбцами
-                        mainAxisSpacing: 10, // Расстояние между строками
-                      ),
-                      itemCount: filteredItems.length,
-                      itemBuilder: (context, index) {
-                        final productItem = filteredItems[index];
-                        return _buildMangaCard(context, productItem, index, favoriteProvider, cartProvider);
-                      },
+      body: Padding(
+        padding: const EdgeInsets.all(20.0),
+        child: Column(
+          children: [
+            _buildHeader(context, isMobile),
+            const SizedBox(height: 20),
+            _buildSearchBar(),
+            const SizedBox(height: 10),
+            _buildSortAndFilterBar(isMobile),
+            const SizedBox(height: 20),
+            Expanded(
+              child: StreamBuilder<List<MangaItem>>(
+                stream: _mangaService.getMangaItems(),
+                builder: (context, snapshot) {
+                  if (snapshot.connectionState == ConnectionState.waiting) {
+                    return Center(child: CircularProgressIndicator());
+                  }
+                  if (snapshot.hasError) {
+                    return Center(child: Text('Ошибка: ${snapshot.error}'));
+                  }
+                  if (!snapshot.hasData || snapshot.data!.isEmpty) {
+                    return Center(child: Text('Нет данных о манге'));
+                  }
+
+                  final mangaItems = snapshot.data!;
+                  final filteredItems = _filterMangaItems(mangaItems);
+                  final sortedItems = _sortMangaItems(filteredItems);
+
+                  return GridView.builder(
+                    gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                      crossAxisCount: isMobile ? 1 : 2, // Один столбец на мобильных устройствах, два на десктопах
+                      childAspectRatio: isMobile ? 1.6 : 2.3, // Соотношение ширины и высоты
+                      crossAxisSpacing: 20, // Расстояние между столбцами
+                      mainAxisSpacing: 10, // Расстояние между строками
                     ),
-                  ),
-                ],
+                    itemCount: sortedItems.length,
+                    itemBuilder: (context, index) {
+                      final productItem = sortedItems[index];
+                      return _buildMangaCard(context, productItem, favoriteProvider, cartProvider);
+                    },
+                  );
+                },
               ),
             ),
+          ],
+        ),
+      ),
     );
   }
 
@@ -266,119 +248,31 @@ class _HomePageState extends State<HomePage> {
   }
 
   // Виджет для сортировки и фильтрации
-  Widget _buildSortAndFilterBar() {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+  Widget _buildSortAndFilterBar(bool isMobile) {
+    return Column(
       children: [
-        DropdownButton<String>(
-          value: sortBy,
-          onChanged: (String? newValue) {
-            if (newValue != null) {
-              _onSortChanged(newValue, sortOrder);
-            }
-          },
-          items: <String>['title', 'price'].map<DropdownMenuItem<String>>((String value) {
-            return DropdownMenuItem<String>(
-              value: value,
-              child: Text(
-                value == 'title' ? 'По алфавиту' : 'По цене',
-                style: TextStyle(color: const Color(0xFFECDBBA)),
-              ),
-            );
-          }).toList(),
-          dropdownColor: const Color(0xFF2D4263),
-          style: TextStyle(color: const Color(0xFFECDBBA)),
-          icon: Icon(Icons.arrow_drop_down, color: const Color(0xFFECDBBA)),
-          underline: Container(height: 1, color: const Color(0xFFECDBBA)),
-        ),
-        DropdownButton<String>(
-          value: sortOrder,
-          onChanged: (String? newValue) {
-            if (newValue != null) {
-              _onSortChanged(sortBy, newValue);
-            }
-          },
-          items: <String>['asc', 'desc'].map<DropdownMenuItem<String>>((String value) {
-            return DropdownMenuItem<String>(
-              value: value,
-              child: Text(
-                value == 'asc' ? 'От а до я' : 'От я до а',
-                style: TextStyle(color: const Color(0xFFECDBBA)),
-              ),
-            );
-          }).toList(),
-          dropdownColor: const Color(0xFF2D4263),
-          style: TextStyle(color: const Color(0xFFECDBBA)),
-          icon: Icon(Icons.arrow_drop_down, color: const Color(0xFFECDBBA)),
-          underline: Container(height: 1, color: const Color(0xFFECDBBA)),
-        ),
-        DropdownButton<String>(
-          value: selectedPublisher,
-          onChanged: (String? newValue) {
-            _onFilterChanged(newValue, minPrice, maxPrice);
-          },
-          items: <String>['Терлецки комикс', 'Другое'].map<DropdownMenuItem<String>>((String value) {
-            return DropdownMenuItem<String>(
-              value: value,
-              child: Text(
-                value,
-                style: TextStyle(color: const Color(0xFFECDBBA)),
-              ),
-            );
-          }).toList(),
-          dropdownColor: const Color(0xFF2D4263),
-          style: TextStyle(color: const Color(0xFFECDBBA)),
-          icon: Icon(Icons.arrow_drop_down, color: const Color(0xFFECDBBA)),
-          underline: Container(height: 1, color: const Color(0xFFECDBBA)),
-        ),
         Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Text('Цена от:', style: TextStyle(color: const Color(0xFFECDBBA))),
-            SizedBox(width: 10),
-            DropdownButton<double>(
-              value: minPrice,
-              onChanged: (double? newValue) {
-                if (newValue != null) {
-                  _onFilterChanged(selectedPublisher, newValue, maxPrice);
-                }
-              },
-              items: <double>[0, 100, 200, 300, 400, 500].map<DropdownMenuItem<double>>((double value) {
-                return DropdownMenuItem<double>(
-                  value: value,
-                  child: Text(
-                    '$value',
-                    style: TextStyle(color: const Color(0xFFECDBBA)),
-                  ),
-                );
-              }).toList(),
-              dropdownColor: const Color(0xFF2D4263),
-              style: TextStyle(color: const Color(0xFFECDBBA)),
-              icon: Icon(Icons.arrow_drop_down, color: const Color(0xFFECDBBA)),
-              underline: Container(height: 1, color: const Color(0xFFECDBBA)),
+            GestureDetector(
+              onTap: () => _showSortDialog(context),
+              child: Row(
+                children: [
+                  Icon(Icons.sort, color: const Color(0xFFECDBBA)),
+                  const SizedBox(width: 5),
+                  Text('Сортировка', style: TextStyle(color: const Color(0xFFECDBBA))),
+                ],
+              ),
             ),
-            SizedBox(width: 10),
-            Text('до:', style: TextStyle(color: const Color(0xFFECDBBA))),
-            SizedBox(width: 10),
-            DropdownButton<double>(
-              value: maxPrice,
-              onChanged: (double? newValue) {
-                if (newValue != null) {
-                  _onFilterChanged(selectedPublisher, minPrice, newValue);
-                }
-              },
-              items: <double>[100, 200, 300, 400, 500, 1000].map<DropdownMenuItem<double>>((double value) {
-                return DropdownMenuItem<double>(
-                  value: value,
-                  child: Text(
-                    '$value',
-                    style: TextStyle(color: const Color(0xFFECDBBA)),
-                  ),
-                );
-              }).toList(),
-              dropdownColor: const Color(0xFF2D4263),
-              style: TextStyle(color: const Color(0xFFECDBBA)),
-              icon: Icon(Icons.arrow_drop_down, color: const Color(0xFFECDBBA)),
-              underline: Container(height: 1, color: const Color(0xFFECDBBA)),
+            GestureDetector(
+              onTap: () => _showFilterDialog(context),
+              child: Row(
+                children: [
+                  Icon(Icons.filter_list, color: const Color(0xFFECDBBA)),
+                  const SizedBox(width: 5),
+                  Text('Фильтр', style: TextStyle(color: const Color(0xFFECDBBA))),
+                ],
+              ),
             ),
           ],
         ),
@@ -386,11 +280,155 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
+  // Диалоговое окно для сортировки
+  void _showSortDialog(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: Text('Сортировка', style: TextStyle(color: const Color(0xFF2D4263))),
+          backgroundColor: const Color(0xFFECDBBA),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                title: Text('От А до Я', style: TextStyle(color: const Color(0xFF2D4263))),
+                onTap: () {
+                  _onSortChanged('title', 'asc');
+                  Navigator.pop(context);
+                },
+              ),
+              ListTile(
+                title: Text('От Я до А', style: TextStyle(color: const Color(0xFF2D4263))),
+                onTap: () {
+                  _onSortChanged('title', 'desc');
+                  Navigator.pop(context);
+                },
+              ),
+              ListTile(
+                title: Text('От дешевого к дорогому', style: TextStyle(color: const Color(0xFF2D4263))),
+                onTap: () {
+                  _onSortChanged('price', 'asc');
+                  Navigator.pop(context);
+                },
+              ),
+              ListTile(
+                title: Text('От дорогого к дешевому', style: TextStyle(color: const Color(0xFF2D4263))),
+                onTap: () {
+                  _onSortChanged('price', 'desc');
+                  Navigator.pop(context);
+                },
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  // Диалоговое окно для фильтрации
+  void _showFilterDialog(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: Text('Фильтр', style: TextStyle(color: const Color(0xFF2D4263))),
+          backgroundColor: const Color(0xFFECDBBA),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text('Издатель:', style: TextStyle(color: const Color(0xFF2D4263))),
+              DropdownButton<String>(
+                value: selectedPublisher,
+                onChanged: (String? newValue) {
+                  if (newValue == null) {
+                    _onFilterChanged(null, minPrice, maxPrice);
+                  } else {
+                    _onFilterChanged(newValue, minPrice, maxPrice);
+                  }
+                },
+                items: [
+                  DropdownMenuItem<String>(
+                    value: null,
+                    child: Text('Все', style: TextStyle(color: const Color(0xFF2D4263))),
+                  ),
+                  ...<String>['Publisher 1', 'Publisher 2', 'Publisher 3']
+                      .map<DropdownMenuItem<String>>((String value) {
+                    return DropdownMenuItem<String>(
+                      value: value,
+                      child: Text(value, style: TextStyle(color: const Color(0xFF2D4263))),
+                    );
+                  }).toList(),
+                ],
+                dropdownColor: const Color(0xFFECDBBA),
+                iconEnabledColor: const Color(0xFF2D4263),
+              ),
+              const SizedBox(height: 10),
+              Text('Цена от:', style: TextStyle(color: const Color(0xFF2D4263))),
+              TextField(
+                keyboardType: TextInputType.number,
+                onChanged: (value) {
+                  final price = double.tryParse(value) ?? 0;
+                  _onFilterChanged(selectedPublisher, price, maxPrice);
+                },
+                decoration: InputDecoration(
+                  hintText: '0',
+                  hintStyle: TextStyle(color: const Color(0xFF2D4263)),
+                  enabledBorder: UnderlineInputBorder(
+                    borderSide: BorderSide(color: const Color(0xFF2D4263)),
+                  ),
+                  focusedBorder: UnderlineInputBorder(
+                    borderSide: BorderSide(color: const Color(0xFFC84B31)),
+                  ),
+                ),
+                style: TextStyle(color: const Color(0xFF2D4263)),
+              ),
+              const SizedBox(height: 10),
+              Text('Цена до:', style: TextStyle(color: const Color(0xFF2D4263))),
+              TextField(
+                keyboardType: TextInputType.number,
+                onChanged: (value) {
+                  final price = double.tryParse(value) ?? 1000;
+                  _onFilterChanged(selectedPublisher, minPrice, price);
+                },
+                decoration: InputDecoration(
+                  hintText: '1000',
+                  hintStyle: TextStyle(color: const Color(0xFF2D4263)),
+                  enabledBorder: UnderlineInputBorder(
+                    borderSide: BorderSide(color: const Color(0xFF2D4263)),
+                  ),
+                  focusedBorder: UnderlineInputBorder(
+                    borderSide: BorderSide(color: const Color(0xFFC84B31)),
+                  ),
+                ),
+                style: TextStyle(color: const Color(0xFF2D4263)),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.pop(context);
+              },
+              child: Text('Отмена', style: TextStyle(color: const Color(0xFF2D4263))),
+            ),
+            TextButton(
+              onPressed: () {
+                Navigator.pop(context);
+              },
+              child: Text('Применить', style: TextStyle(color: const Color(0xFF2D4263))),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
   // Карточка манги
-  Widget _buildMangaCard(BuildContext context, MangaItem productItem, int index, FavoriteProvider favoriteProvider, CartProvider cartProvider) {
+  Widget _buildMangaCard(BuildContext context, MangaItem productItem, FavoriteProvider favoriteProvider, CartProvider cartProvider) {
     final screenWidth = MediaQuery.of(context).size.width;
     final isMobile = screenWidth < 600;
-    
+
     // Плавное уменьшение шрифта, учитывая ширину экрана
     final titleFontSize = (screenWidth * 0.06).clamp(14.0, 26.0);
     final descriptionFontSize = (screenWidth * 0.04).clamp(12.0, 20.0);
@@ -404,20 +442,22 @@ class _HomePageState extends State<HomePage> {
             builder: (context) => MangaDetailsScreen(
               title: productItem.title,
               price: productItem.price,
-              index: index,
+              documentId: productItem.documentId, // Передаем documentId
               additionalImages: productItem.additionalImages,
               description: productItem.description,
               format: productItem.format,
               publisher: productItem.publisher,
               imagePath: productItem.imagePath,
               chapters: productItem.chapters,
-              onDelete: () => _deleteMangaItem(index), // Передаем функцию удаления
+              onDelete: () {
+                _mangaService.deleteMangaItem(productItem.documentId);
+              },
             ),
           ),
         );
 
         if (result != null && result is int) {
-          _deleteMangaItem(result);
+          _mangaService.deleteMangaItem(productItem.documentId);
         }
       },
       child: Container(
@@ -488,7 +528,7 @@ class _HomePageState extends State<HomePage> {
               right: 8,
               child: _buildIconButton(
                 icon: favoriteProvider.favoriteItems.contains(productItem) ? Icons.favorite : Icons.favorite_border,
-                onTap: () => _toggleFavorite(context, index),
+                onTap: () => _toggleFavorite(context, productItem),
               ),
             ),
             Positioned(
@@ -496,7 +536,7 @@ class _HomePageState extends State<HomePage> {
               right: 8,
               child: _buildIconButton(
                 icon: cartProvider.cartItems.contains(productItem) ? Icons.shopping_cart : Icons.add_shopping_cart,
-                onTap: () => _toggleCart(context, index),
+                onTap: () => _toggleCart(context, productItem),
               ),
             ),
           ],

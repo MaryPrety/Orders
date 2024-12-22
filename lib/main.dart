@@ -3,23 +3,17 @@ import 'package:flutter/material.dart';
 import 'package:menu/services_2/auth/auth_gate_2.dart';
 import 'package:menu/services_2/auth/auth_service_2.dart';
 import 'package:provider/provider.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'pages/home_page.dart';
 import 'pages/manga_selected.dart';
 import 'pages/cart_page.dart'; // Импортируем страницу корзины
 import 'pages/login_page_2.dart'; // Импортируем страницу входа
 import 'pages/register_page_2.dart'; // Импортируем страницу регистрации
-import 'pages/profile_page.dart'; // Импортируем страницу профиля
+import 'pages/chats_1.dart'; // Импортируем страницу профиля
 import 'providers/favorite_provider.dart';
 import 'providers/cart_provider.dart'; // Импортируем CartProvider
 
 void main() async {
-  // Инициализация Supabase
-  // await Supabase.initialize(
-  //   url: 'https://mqohkpdemmfqlespuvxe.supabase.co',
-  //   anonKey: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1xb2hrcGRlbW1mcWxlc3B1dnhlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MzE4Mjg1NzUsImV4cCI6MjA0NzQwNDU3NX0.uocESaHYfax5qdZnKV7rAkEmOjT2GtWsarAUFjoV3JY",
-  // );
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp(
     options: const FirebaseOptions(
@@ -36,8 +30,8 @@ void main() async {
         ChangeNotifierProvider(create: (_) => FavoriteProvider()),
         ChangeNotifierProvider(create: (_) => CartProvider()), 
         ChangeNotifierProvider(
-      create: (context) => AuthService(),
-      child: const MyApp()),// Добавляем CartProvider
+          create: (context) => AuthService(),
+        ),
       ],
       child: const MyApp(),
     ),
@@ -77,9 +71,9 @@ class MyApp extends StatelessWidget {
             return MaterialPageRoute(builder: (context) => const MainPage(initialIndex: 0)); // Перенаправление на домашнюю страницу при ошибке маршрута
           },
           routes: {
-            '/login': (context) => const AuthGate2(),
-            // '/register': (context) => const RegisterPage2(),
-            '/profile': (context) => const ProfilePage(),
+            '/login': (context) => const LoginPage2(),
+            '/register': (context) => const RegisterPage2(),
+            '/profile': (context) => const Chats(), // Обновляем маршрут на новую страницу
             '/home': (context) => const MainPage(initialIndex: 0),
             '/manga_selected': (context) => const MainPage(initialIndex: 1),
             '/cart': (context) => const MainPage(initialIndex: 2),
@@ -89,28 +83,6 @@ class MyApp extends StatelessWidget {
     );
   }
 }
-
-// class AuthGate extends StatelessWidget {
-//   const AuthGate({super.key});
-
-//   @override
-//   Widget build(BuildContext context) {
-//     return StreamBuilder(
-//       stream: Supabase.instance.client.auth.onAuthStateChange,
-//       builder: (context, snapshot) {
-//         if (snapshot.connectionState == ConnectionState.active) {
-//           final session = snapshot.data?.session;
-//           if (session != null) {
-//             return const MainPage(initialIndex: 0);
-//           } else {
-//             return const LoginPage2();
-//           }
-//         }
-//         return const Center(child: CircularProgressIndicator());
-//       },
-//     );
-//   }
-// }
 
 class MainPage extends StatefulWidget {
   final int initialIndex;
@@ -128,7 +100,7 @@ class _MainPageState extends State<MainPage> {
     HomePage(),
     MangaSelectedPage(),
     CartPage(),
-    ProfilePage(),
+    Chats(), // Обновляем страницу профиля на новую страницу
   ];
 
   @override
@@ -145,7 +117,14 @@ class _MainPageState extends State<MainPage> {
 
   @override
   Widget build(BuildContext context) {
-    final cartProvider = Provider.of<CartProvider>(context);
+    final authService = Provider.of<AuthService>(context);
+
+    // Проверяем, авторизован ли пользователь
+    if (authService.currentUser == null) {
+      return LoginPage2(); // Если пользователь не авторизован, перенаправляем на страницу входа
+    }
+
+    final cartProvider = Provider.of<CartProvider>(context, listen: true);
     final totalCartItems = cartProvider.cartItems.fold(0, (sum, item) => sum + cartProvider.getItemQuantity(item));
 
     return Scaffold(
@@ -176,7 +155,7 @@ class _MainPageState extends State<MainPage> {
                     child: Container(
                       padding: const EdgeInsets.all(2),
                       decoration: BoxDecoration(
-                        color: Colors.red,
+                        color: const Color.fromRGBO(200, 75, 49, 1),
                         borderRadius: BorderRadius.circular(6),
                       ),
                       constraints: const BoxConstraints(
@@ -207,23 +186,8 @@ class _MainPageState extends State<MainPage> {
         currentIndex: _selectedIndex,
         selectedItemColor: const Color.fromRGBO(200, 75, 49, 1),
         unselectedItemColor: const Color(0xFFECDBBA),
-        onTap: (index) {
-          if (index == 3) {
-            _handleProfileIconTap(context);
-          } else {
-            _onItemTapped(index);
-          }
-        },
+        onTap: _onItemTapped,
       ),
     );
-  }
-
-  void _handleProfileIconTap(BuildContext context) {
-    final session = Supabase.instance.client.auth.currentSession;
-    if (session != null) {
-      Navigator.pushNamed(context, '/profile');
-    } else {
-      Navigator.pushNamed(context, '/login');
-    }
   }
 }

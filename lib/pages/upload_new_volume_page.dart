@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:dio/dio.dart';
 import '../models/manga_item.dart';
-import '../services/api_service.dart';
+import '../services/manga_service.dart'; // Импортируем MangaService
 
 // Константы для цветов и размеров
 const Color primaryColor = Color(0xFFC84B31);
@@ -108,48 +107,39 @@ class _UploadNewVolumePageState extends State<UploadNewVolumePage> {
   }
 
   // Метод отправки формы
-  Future<void> _submit() async {
-    if (_validateInputs()) {
-      setState(() => _isSubmitting = true);
-      final newMangaItem = MangaItem(
-        id: 0, 
-        imagePath: _imageLinks[0],
-        title: _volumeController.text,
-        description: _fullDescriptionController.text,
-        price: _priceController.text,
-        additionalImages: _imageLinks.sublist(1),
-        format: _formatController.text,
-        publisher: _publisherController.text,
-        chapters: _chaptersController.text,
-      );
+Future<void> _submit() async {
+  if (_validateInputs()) {
+    setState(() => _isSubmitting = true);
+    final newMangaItem = MangaItem(
+      documentId: '', // Пустой documentId, так как Firestore сгенерирует его
+      imagePath: _imageLinks[0],
+      title: _volumeController.text,
+      description: _fullDescriptionController.text,
+      price: _priceController.text,
+      additionalImages: _imageLinks.sublist(1),
+      format: _formatController.text,
+      publisher: _publisherController.text,
+      chapters: _chaptersController.text,
+    );
 
-      try {
-        // Проверка на существование товара с тем же названием
-        final existingProducts = await ApiService().fetchProducts();
-        if (existingProducts.any((product) => product.title == newMangaItem.title)) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text("Товар с таким названием уже существует")),
-          );
-          return;
-        }
-
-        // Создание товара
-        final createdItem = await ApiService().createProduct(newMangaItem);
-        widget.onItemCreated(createdItem); // Только вызываем onItemCreated
-      } catch (error) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Ошибка при создании товара: $error')),
-        );
-      } finally {
-        setState(() => _isSubmitting = false);
-        Navigator.pop(context); // Только закрываем экран без передачи данных
-      }
-    } else {
+    try {
+      // Добавление новой манги в Firestore
+      await MangaService().addMangaItem(newMangaItem);
+      widget.onItemCreated(newMangaItem); // Вызываем onItemCreated
+      Navigator.pop(context); // Закрываем экран
+    } catch (error) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Пожалуйста, заполните все поля и добавьте ровно 3 изображения")),
+        SnackBar(content: Text('Ошибка при создании товара: $error')),
       );
+    } finally {
+      setState(() => _isSubmitting = false);
     }
+  } else {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text("Пожалуйста, заполните все поля и добавьте ровно 3 изображения")),
+    );
   }
+}
 
   @override
   Widget build(BuildContext context) {

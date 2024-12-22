@@ -4,26 +4,25 @@ import 'package:provider/provider.dart';
 import '../models/manga_item.dart';
 import '../providers/favorite_provider.dart';
 import '../providers/cart_provider.dart'; // Импортируем CartProvider
-import '../services/api_service.dart'; // Импортируем ApiService
 import 'edit_manga_page.dart'; // Импортируем страницу редактирования
 
 class MangaDetailsScreen extends StatelessWidget {
   final String title;
   final String price;
-  final int index;
+  final String documentId; // Добавляем documentId
   final List<String> additionalImages;
   final String description;
   final String format;
   final String publisher;
   final String imagePath;
   final String chapters;
-  final void Function() onDelete;
+  final VoidCallback onDelete;
 
   const MangaDetailsScreen({
     Key? key,
     required this.title,
     required this.price,
-    required this.index,
+    required this.documentId, // Добавляем documentId
     required this.additionalImages,
     required this.description,
     required this.format,
@@ -59,7 +58,7 @@ class MangaDetailsScreen extends StatelessWidget {
     final cartProvider = Provider.of<CartProvider>(context); // Добавляем CartProvider
 
     final mangaItem = MangaItem(
-      id: 0, // Пустой id, так как сервер его сгенерирует
+      documentId: documentId, // Используем documentId
       imagePath: imagePath,
       title: title,
       description: description,
@@ -67,15 +66,14 @@ class MangaDetailsScreen extends StatelessWidget {
       additionalImages: additionalImages,
       format: format,
       publisher: publisher,
-     
       chapters: chapters,
     );
 
-    // Проверка, добавлена ли манга в избранное
+   // Проверка, добавлена ли манга в избранное
     final isFavorite = favoriteProvider.isFavorite(mangaItem);
 
     // Проверка, добавлена ли манга в корзину
-    final isInCart = cartProvider.cartItems.contains(mangaItem);
+    final isInCart = cartProvider.cartItems.any((item) => item.documentId == mangaItem.documentId);
 
     return Scaffold(
       backgroundColor: const Color(0xFF2D4263),
@@ -86,48 +84,48 @@ class MangaDetailsScreen extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
               Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Text(
-                      'MANgo100',
-                      style: TextStyle(
-                        fontFamily: 'Tektur',
-                        fontSize: isMobile ? 30.0 : 40.0, // Уменьшите размер шрифта
-                        color: const Color(0xFFECDBBA),
-                      ),
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Text(
+                    'MANgo100',
+                    style: TextStyle(
+                      fontFamily: 'Tektur',
+                      fontSize: isMobile ? 30.0 : 40.0, // Уменьшите размер шрифта
+                      color: const Color(0xFFECDBBA),
                     ),
-                    const SizedBox(width: 10), // Отступ между текстом и кнопкой
-                    GestureDetector(
-                      onTap: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) => EditMangaPage(
-                              mangaItem: mangaItem,
-                              onItemUpdated: (updatedItem) {
-                                // Обработка обновленного элемента
-                              },
-                            ),
+                  ),
+                  const SizedBox(width: 10), // Отступ между текстом и кнопкой
+                  GestureDetector(
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => EditMangaPage(
+                            mangaItem: mangaItem,
+                            onItemUpdated: (updatedItem) {
+                              // Обработка обновленного элемента
+                            },
                           ),
-                        );
-                      },
-                      child: Container(
-                        width: isMobile ? 24.0 : 40.0,
-                        height: isMobile ? 24.0 : 40.0,
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFC84B31),
-                          borderRadius: BorderRadius.circular(10),
                         ),
-                        child: Icon(
-                          Icons.edit, // Используем значок редактирования
-                          color: const Color(0xFFECDBBA),
-                          size: isMobile ? 20 : 28, // Размер иконки
-                        ),
+                      );
+                    },
+                    child: Container(
+                      width: isMobile ? 24.0 : 40.0,
+                      height: isMobile ? 24.0 : 40.0,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFC84B31),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Icon(
+                        Icons.edit, // Используем значок редактирования
+                        color: const Color(0xFFECDBBA),
+                        size: isMobile ? 20 : 28, // Размер иконки
                       ),
                     ),
-                  ],
-                ),
-             Row(
+                  ),
+                ],
+              ),
+              Row(
                 mainAxisAlignment: MainAxisAlignment.center, // Центрируем заголовок и кнопку
                 children: [
                   Expanded(
@@ -141,7 +139,6 @@ class MangaDetailsScreen extends StatelessWidget {
                       textAlign: TextAlign.center, // Центрируем текст
                     ),
                   ),
-                 
                 ],
               ),
               const SizedBox(height: 50),
@@ -198,25 +195,26 @@ class MangaDetailsScreen extends StatelessWidget {
                           ),
                         ),
                         const SizedBox(height: 30),
-                        Row(
-                          children: additionalImages.map((image) {
-                            return Padding(
-                              padding: const EdgeInsets.symmetric(horizontal: 5),
-                              child: ClipRRect(
-                                borderRadius: BorderRadius.circular(14),
-                                child: Image.network(
-                                  image,
-                                  width: isMobile ? 50 : 80,
-                                  height: isMobile ? 50 : 80,
-                                  fit: BoxFit.contain,
-                                  errorBuilder: (context, error, stackTrace) {
-                                    return const Center(child: Text('Ошибка загрузки изображения'));
-                                  },
+                        if (additionalImages.isNotEmpty)
+                          Row(
+                            children: additionalImages.map((image) {
+                              return Padding(
+                                padding: const EdgeInsets.symmetric(horizontal: 5),
+                                child: ClipRRect(
+                                  borderRadius: BorderRadius.circular(14),
+                                  child: Image.network(
+                                    image,
+                                    width: isMobile ? 50 : 80,
+                                    height: isMobile ? 50 : 80,
+                                    fit: BoxFit.contain,
+                                    errorBuilder: (context, error, stackTrace) {
+                                      return const Center(child: Text('Ошибка загрузки изображения'));
+                                    },
+                                  ),
                                 ),
-                              ),
-                            );
-                          }).toList(),
-                        ),
+                              );
+                            }).toList(),
+                          ),
                       ],
                     ),
                   ),
@@ -358,7 +356,7 @@ class MangaDetailsScreen extends StatelessWidget {
               child: const Text('Удалить'),
               onPressed: () async {
                 try {
-                  // Удаляем товар через API
+                  // Удаляем товар через Firebase
                   onDelete(); // Вызываем функцию удаления
                   Navigator.of(context).pop(); // Закрываем диалоговое окно
                   Navigator.pop(context); // Возвращаемся на предыдущий экран

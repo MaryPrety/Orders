@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import '../models/manga_item.dart';
-import '../services/api_service.dart';
+import '../services/manga_service.dart'; // Импортируем MangaService
 
 const Color primaryColor = Color(0xFFC84B31);
 const Color secondaryColor = Color(0xFFECDBBA);
@@ -78,7 +78,7 @@ class _EditMangaPageState extends State<EditMangaPage> {
       setState(() => _isSubmitting = true);
 
       final updatedItem = MangaItem(
-        id: widget.mangaItem.id,
+        documentId: widget.mangaItem.documentId, // Используем documentId из Firestore
         imagePath: _imageLinks[0],
         title: _volumeController.text,
         description: _fullDescriptionController.text,
@@ -90,7 +90,8 @@ class _EditMangaPageState extends State<EditMangaPage> {
       );
 
       try {
-        await ApiService().changeProductStatus(updatedItem);
+        // Обновление манги в Firestore
+        await MangaService().updateMangaItem(widget.mangaItem.documentId, updatedItem);
         widget.onItemUpdated(updatedItem); // Обновляем состояние на родительской странице
         Navigator.pop(context, updatedItem); // Возвращаем обновленный элемент
       } catch (error) {

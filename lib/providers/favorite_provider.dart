@@ -1,54 +1,62 @@
-import 'package:flutter/foundation.dart';
-import 'package:dio/dio.dart';
+import 'dart:async';
+import 'package:flutter/material.dart';
 import '../models/manga_item.dart';
+import '../services/favorite_service.dart';
 
 class FavoriteProvider with ChangeNotifier {
+  final FavoriteService _favoriteService = FavoriteService();
   List<MangaItem> _favoriteItems = [];
-  final Dio _dio = Dio(); // Инициализация Dio для работы с API
-  final String _baseUrl = 'http://localhost:8080/mangaItems'; // Укажите URL вашего API
+  StreamController<List<MangaItem>> _favoriteItemsStreamController = StreamController<List<MangaItem>>.broadcast();
 
+  // Получение списка избранных товаров
   List<MangaItem> get favoriteItems => _favoriteItems;
 
-  Future<void> addToFavorites(MangaItem item) async {
-    if (!_favoriteItems.contains(item)) {
-      _favoriteItems.add(item);
-      
-      // Отправка запроса на сервер для добавления товара в избранное
-      await _addItemToFavoritesAPI(item);
-      notifyListeners();
-    }
+  // Получение потока избранных товаров
+  Stream<List<MangaItem>> get favoriteItemsStream => _favoriteItemsStreamController.stream;
+
+  // Конструктор
+  FavoriteProvider() {
+    loadFavorites(); // Загрузка избранных товаров при создании провайдера
   }
 
+  // Добавление товара в избранное
+  Future<void> addToFavorites(MangaItem item) async {
+    _favoriteItems.add(item);
+    await _favoriteService.addToFavorites(item.documentId);
+    updateStream();
+  }
+
+  // Удаление товара из избранного
   Future<void> removeFromFavorites(MangaItem item) async {
     _favoriteItems.remove(item);
-    
-    // Отправка запроса на сервер для удаления товара из избранного
-    await _removeItemFromFavoritesAPI(item);
+    await _favoriteService.removeFromFavorites(item.documentId);
+    updateStream();
+  }
+
+  // Проверка, находится ли товар в избранном
+  bool isFavorite(MangaItem item) {
+    return _favoriteItems.any((favorite) => favorite.documentId == item.documentId);
+  }
+
+  // Загрузка избранных товаров из Firestore
+  Future<void> loadFavorites() async {
+    final favoriteItems = await _favoriteService.getFavoriteItems();
+    _favoriteItems = favoriteItems.map((item) {
+      return MangaItem.fromFirestore(item, item['documentId']);
+    }).toList();
+    updateStream();
+  }
+
+  // Обновление потока данных
+  void updateStream() {
+    _favoriteItemsStreamController.add(_favoriteItems);
     notifyListeners();
   }
 
-  bool isFavorite(MangaItem item) {
-    return _favoriteItems.contains(item);
-  }
-
-  // Приватные методы для работы с API
-  Future<void> _addItemToFavoritesAPI(MangaItem item) async {
-    try {
-      await _dio.post('$_baseUrl/favorites', data: {
-        'itemId': item.id, // Убедитесь, что у вашего объекта есть id
-      });
-    } catch (e) {
-      // Обработка ошибок
-      print('Error adding item to favorites: $e');
-    }
-  }
-
-  Future<void> _removeItemFromFavoritesAPI(MangaItem item) async {
-    try {
-      await _dio.delete('$_baseUrl/favorites/${item.id}');
-    } catch (e) {
-      // Обработка ошибок
-      print('Error removing item from favorites: $e');
-    }
+  // Освобождение ресурсов
+  @override
+  void dispose() {
+    _favoriteItemsStreamController.close();
+    super.dispose();
   }
 }

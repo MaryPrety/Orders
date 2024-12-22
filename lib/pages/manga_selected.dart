@@ -22,9 +22,21 @@ class MangaSelectedPage extends StatelessWidget {
             _buildHeader(context, isMobile, screenWidth),
             const SizedBox(height: 20),
             Expanded(
-              child: favoriteProvider.favoriteItems.isEmpty
-                  ? _buildEmptyFavoritesMessage()
-                  : _buildFavoriteMangaGrid(context, favoriteProvider, cartProvider, isMobile, screenWidth),
+              child: StreamBuilder<List<MangaItem>>(
+                stream: favoriteProvider.favoriteItemsStream, // Используем Stream для получения данных
+                builder: (context, snapshot) {
+                  if (snapshot.connectionState == ConnectionState.waiting) {
+                    return const Center(child: CircularProgressIndicator());
+                  }
+                  if (snapshot.hasError) {
+                    return Center(child: Text('Ошибка: ${snapshot.error}'));
+                  }
+                  if (snapshot.data == null || snapshot.data!.isEmpty) {
+                    return _buildEmptyFavoritesMessage();
+                  }
+                  return _buildFavoriteMangaGrid(context, snapshot.data!, cartProvider, isMobile, screenWidth);
+                },
+              ),
             ),
           ],
         ),
@@ -55,7 +67,7 @@ class MangaSelectedPage extends StatelessWidget {
     );
   }
 
-  Widget _buildFavoriteMangaGrid(BuildContext context, FavoriteProvider favoriteProvider, CartProvider cartProvider, bool isMobile, double screenWidth) {
+  Widget _buildFavoriteMangaGrid(BuildContext context, List<MangaItem> favoriteMangas, CartProvider cartProvider, bool isMobile, double screenWidth) {
     return GridView.builder(
       gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
         crossAxisCount: isMobile ? 1 : 2, // Один столбец на мобильных устройствах, два на десктопах
@@ -64,17 +76,17 @@ class MangaSelectedPage extends StatelessWidget {
         mainAxisSpacing: 10, // Расстояние между строками
       ),
       padding: const EdgeInsets.all(16),
-      itemCount: favoriteProvider.favoriteItems.length,
+      itemCount: favoriteMangas.length,
       itemBuilder: (context, index) {
-        final manga = favoriteProvider.favoriteItems[index];
-        return _buildMangaCard(context, manga, index, favoriteProvider, cartProvider, screenWidth);
+        final manga = favoriteMangas[index];
+        return _buildMangaCard(context, manga, cartProvider, screenWidth);
       },
     );
   }
 
-  Widget _buildMangaCard(BuildContext context, MangaItem manga, int index, FavoriteProvider favoriteProvider, CartProvider cartProvider, double screenWidth) {
+  Widget _buildMangaCard(BuildContext context, MangaItem manga, CartProvider cartProvider, double screenWidth) {
     final isMobile = screenWidth < 600;
-    
+
     // Плавное уменьшение шрифта, учитывая ширину экрана
     final titleFontSize = (screenWidth * 0.06).clamp(14.0, 26.0);
     final descriptionFontSize = (screenWidth * 0.04).clamp(12.0, 20.0);
@@ -86,24 +98,24 @@ class MangaSelectedPage extends StatelessWidget {
           context,
           MaterialPageRoute(
             builder: (context) => MangaDetailsScreen(
-              title: manga.title ?? '',
-              price: manga.price ?? '',
-              index: index,
-              additionalImages: manga.additionalImages ?? [],
-              description: manga.description ?? '',
-              format: manga.format ?? '',
-              publisher: manga.publisher ?? '',
-              imagePath: manga.imagePath ?? '',
-              chapters: manga.chapters ?? '',
+              title: manga.title,
+              price: manga.price,
+              documentId: manga.documentId,
+              additionalImages: manga.additionalImages,
+              description: manga.description,
+              format: manga.format,
+              publisher: manga.publisher,
+              imagePath: manga.imagePath,
+              chapters: manga.chapters,
               onDelete: () {
-                favoriteProvider.removeFromFavorites(manga); // Логика удаления
+                Provider.of<FavoriteProvider>(context, listen: false).removeFromFavorites(manga);
               },
             ),
           ),
         );
 
         if (result != null && result is int) {
-          favoriteProvider.removeFromFavorites(manga);
+          Provider.of<FavoriteProvider>(context, listen: false).removeFromFavorites(manga);
         }
       },
       child: Container(
@@ -121,7 +133,7 @@ class MangaSelectedPage extends StatelessWidget {
                 ClipRRect(
                   borderRadius: BorderRadius.circular(28),
                   child: Image.network(
-                    manga.imagePath ?? '',
+                    manga.imagePath,
                     fit: BoxFit.cover,
                     width: isMobile ? screenWidth * 0.3 : 160,
                     height: isMobile ? screenWidth * 0.45 : 280,
@@ -138,7 +150,7 @@ class MangaSelectedPage extends StatelessWidget {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          manga.title ?? '',
+                          manga.title,
                           style: TextStyle(
                             fontSize: titleFontSize, // Плавное уменьшение шрифта заголовка
                             color: const Color(0xFF2D4263),
@@ -146,7 +158,7 @@ class MangaSelectedPage extends StatelessWidget {
                         ),
                         const SizedBox(height: 10),
                         Text(
-                          manga.description ?? '',
+                          manga.description,
                           style: TextStyle(
                             fontSize: descriptionFontSize, // Плавное уменьшение шрифта описания
                             color: const Color(0xFF2D4263),
@@ -157,7 +169,7 @@ class MangaSelectedPage extends StatelessWidget {
                         ),
                         const SizedBox(height: 10),
                         Text(
-                          manga.price ?? '',
+                          manga.price,
                           style: TextStyle(
                             fontSize: priceFontSize, // Плавное уменьшение шрифта цены
                             color: const Color(0xFF2D4263),
@@ -174,7 +186,9 @@ class MangaSelectedPage extends StatelessWidget {
               right: 8,
               child: _buildIconButton(
                 icon: Icons.delete,
-                onTap: () => favoriteProvider.removeFromFavorites(manga),
+                onTap: () {
+                  Provider.of<FavoriteProvider>(context, listen: false).removeFromFavorites(manga);
+                },
                 screenWidth: screenWidth,
               ),
             ),
@@ -183,7 +197,13 @@ class MangaSelectedPage extends StatelessWidget {
               right: 8,
               child: _buildIconButton(
                 icon: cartProvider.cartItems.contains(manga) ? Icons.shopping_cart : Icons.add_shopping_cart,
-                onTap: () => cartProvider.cartItems.contains(manga) ? cartProvider.removeFromCart(manga) : cartProvider.addToCart(manga),
+                onTap: () {
+                  if (cartProvider.cartItems.contains(manga)) {
+                    cartProvider.removeFromCart(manga);
+                  } else {
+                    cartProvider.addToCart(manga);
+                  }
+                },
                 screenWidth: screenWidth,
               ),
             ),
